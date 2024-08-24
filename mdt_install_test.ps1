@@ -1,168 +1,200 @@
 param (
 
  [Parameter(Mandatory=$false)][string]$list,
- [Parameter(Mandatory=$false)][switch]$room_method,
- [Parameter(Mandatory=$true)][string]$application
-
+ [Parameter(Mandatory=$false)][switch]$room_method
  )
 
-$credential = Get-Credential 
+function Start-Menu {
 
-
-function pc-health {
-
-$check = $args[0]
-If ( Test-Connection -BufferSize 32 -Count 1 -ComputerName $check -Quiet )
-{  }
-else
-{ Write-Host " $check is not available " -ForegroundColor Red
-  continue }
- 
-}
-
-function list-computers {
-
-$roomarray = @() 
-$global:results = @()
-
-do {
-$room = Read-Host "Please enter your room number(s). Press q and enter when finished"
-
-    if ($room -notlike "q"){
-
-    $roomarray += $room
-    
-    
-    }
-} until ($room -like "q")
-
-
-
-foreach ($room in $roomarray){
-
-$length =$room.Length 
-$room = $room.Insert($length,"-*")
-$room = $room.Insert(0,"s-")
- 
-$getad = (([adsisearcher]"(&(objectCategory=Computer)(name=$room))").findall()).properties
-$global:results += $getad.cn
-
-}}
-
-
-function local-test {
-
-    $Share_test = Test-Path Z:\Applications
+    $apps = Get-ChildItem -Path C:\Users\jeree\script_test | Select-Object -exp Name 
+    $app_length = $apps.Length -1
+    $apps_hashtable = @{}
      
-    if ($Share_test){ } # do nothing if the path already exists 
-
-    else {
-
-    New-PSDrive -name "Z" -PSProvider FileSystem -Root \\s-mdt-w10\distribution$ -Credential $credential # mounting distribution share locally to Z: if doesn't exist. 
-    } 
-
-    $app_search = Get-ChildItem -Path Z:\Applications | select-string $application | sort # Querying the Applications folder for the application specified by user 
-
-    $pathtest = Test-Path "Z:\Applications\$application" # Testing to see if the folder for the user-specified application exists. 
-
-    if ($pathtest){
-
-    cd "Z:\Applications\$application"}
-
-    else {
-
-    Write-Host "Error! Can't find designated application. Please ensure to type the application exactly as it appears in the distribution share" -BackgroundColor Red 
-    echo ""
-    echo "Below are some potential matches to the application you typed"
-    echo ""
-    echo $app_search 
-
-    exit 1
- 
-   }
-
-    $cmd_file = Get-ChildItem -path "Z:\Applications\$application" | Where-Object Name -like "*.cmd" | select -exp Name
-
-    if ($cmd_file){
-
-    echo "This application does have a .cmd file" 
-
+    for ($x = 0; $x -lt $apps.Length; $x++){
+   
+       $apps_hashtable.Add("$x", $apps[$x])
+   
     }
 
-    else{
+    While ($true){
 
-    echo "this application does not have a .cmd file. This application cannot be installed"
-    exit 1 
+    $apps_hashtable.GetEnumerator() | Sort-Object  Value |  Format-Table 
+    Write-host "[s] Search for Application"
+    Write-host "[0 - $app_length] Install Corresponding Applicaiton" 
+    Write-host "[q] Exit this Script"
+    $search = read-host 
+
+    if ($search -like "s"){
+
+        $search = read-host "Please enter the name of the application you'd like to search"
+        $global:result = $apps_hashtable.GetEnumerator() | Where-Object Value -like *$search* | Sort-Object Name | Format-Table  
+        
+        if ( $null -eq $global:result ){
+            Write-host "There were no matches with your search, Please try again"
+            Write-host ""
+            Write-Host "Returning to Beginning of Menu..."
+            Start-Sleep -Seconds 3 
+            continue 
+        }
+
+        Write-host "Below are the applications that are similar to your search."
+        $global:result  
+
+        $choice = read-host "Select a number to install or press q to restart"
+            
+            if ($choice -le $apps.length){
+                $global:result = $apps_hashtable.GetEnumerator() | Where-Object Name -eq $choice | Sort-Object Value | select -exp Value
+                Write-host "Are you sure you'd like to install $global:result ?"
+                $confirm =  Read-Host "Press y/n"
+                        if ($confirm -like "y"){
+                            break
+                        }
+                        else {
+                            Write-host "Returning to beginning of menu..."
+                            Start-sleep -Seconds 3 
+                        }
+            }
+            elseif ($choice -like "q"){
+                "Restarting this Menu"
+                Start-Sleep -Seconds 3
+            }   
     }
 
-    $global:local_test = $true
+    elseif ($search -le $apps.Length){
+
+        $global:result = $apps_hashtable.GetEnumerator() | Where-Object Name -eq $search | select -exp Value 
+        Write-host "Are you sure you would like to install $global:result ?"  
+        $confirm = read-host "press y/n"
+            if ($confirm -eq "y"){
+                break 
+            }
+            else {
+                "Returning to beginning of menu..."
+                Start-Sleep -Seconds 3
+            }
+        
+    }
+
+    elseif ($search -eq "q"){
+        Write-Host "Exiting this Script"
+        exit 1 
+    }
+
+    elseif ($search -gt $apps.Length){
+
+        Write-Host"the value you input is too high, please try again"
+        Start-sleep -seconds 3 
+    }
+    }
+
 }
 
 function remote-install {
 
-Invoke-Command -ComputerName $args[0] {
-
-    New-PSDrive -name "Z" -PSProvider FileSystem -Root \\s-mdt-w10\distribution$ -Credential $credential
-
-    cd "Z:\Applications\$application"
-
-    $cmd_file = Get-ChildItem -path "Z:\Applications\$application" | Where-Object Name -like "*.cmd" | select -exp Name
+    Invoke-Command -ComputerName $args[0] {
     
-    Invoke-Expression .\$cmd_file 
-
+        Invoke-Expression $net_command
+    
+        cd "Z:\Applications\$result"
+    
+        $cmd_file = Get-ChildItem -path "Z:\Applications\$result" | Where-Object Name -like "*.cmd" | select -exp Name
+        
+        Invoke-Expression .\$cmd_file 
+    
+        }
+    
     }
+
+function pc-health {
+
+    $check = $args[0]
+    If ( Test-Connection -BufferSize 32 -Count 1 -ComputerName $check -Quiet )
+    { 
+        $alive_pcs += $check 
+    }
+    else
+    { Write-Host " $check is not available " -ForegroundColor Red
+         continue }
+         
+    }
+function get-pclist {
+
+    do {
+        $room = Read-Host "Please enter your room number(s). Press q and enter when finished"
+            
+            if ($room -notlike "q"){
+            
+            $roomarray += $room
+                
+            }
+        } until ($room -like "q")
+            
+              
+    foreach ($room in $roomarray){
+            
+            
+        $length =$room.Length 
+        $room = $room.Insert($length,"-*")
+        $room = $room.Insert(0,"s-")
+                
+        $getad = (([adsisearcher]"(&(objectCategory=Computer)(name=$room))").findall()).properties
+                    
+        $pc_list += $getad.cn
+            
+        }
+    
+    }
+
+Start-Menu 
+
+############## Assigning Variables and arrays necessary for function use ######################
+
+
+$roomarray = @()
+$pc_list = @()
+$pcs = @()
+$alive_pcs = @()
+$mdt_server = "\\s-mdt-w10\distribution$"
+$drive_letter = "Z:"
+
+if (($list -eq "") -and ($room_method -eq $false) -or ($list -ne "") -and ($room_method = $true)){ # logic to catch inputs for both or neither of the two parameters for PC lists
+
+    Write-Host "Error! You must choose (only) 1 method of importing PC Names" -BackgroundColor Red 
+
+    exit 1 
 
 }
 
- 
- if ($Global:local_test){ # if the local testing of directories went well, this is executed
+#Prompting for User Credentials 
+$username = read-host "Please enter your username" 
+$password = read-host "Please enter your password"
 
+#Assigning net use command to a string variable; workaround since net use won't take variables nicely
+$net_command = "net use $drive_letter $mdt_server /user:dtcc\$username $password" 
+
+ 
+
+$mdt_test = Test-Path -Path Z:\Applications 
+
+
+if ($mdt_test -eq $false){ # If Z:\applications isn't mounted, mount it by invoking net_command expression
     
-    if ($room_method){
+        Invoke-Expression $net_command 
+}
 
-        foreach ($comp in $global:results){
-        
-        pc-health $comp 
-
-        remote-install $comp 
-
-        }
-  }
+Start-Menu # Calls start menu function to retrieve desired application from user q
 
 
-    elseif ($list) {
-    $computers = get-content $list 
+if ($room_method){
 
-    foreach ($comp in $computers){
+    get-pclist # calls function to get pc list by room number; assigns pcs to pc_list array
+}
+elseif ($list){
 
-    pc-health $comp 
+$pc_list = get-content $list # assigns $pc_list to the content of the list provided in the -l parameter
+}
 
-    remote-install $comp 
+pc-health $pc_list # Calls pc health function to test connection on the pc_list; the ones that are connected get assigned to the alive_pcs array
 
-
-    }}
-
-
-    else{  #change error handling to be relevant to the actual script, not bios_check
-
-    echo ""
-    echo "Please designate if you want to use a list or manually select rooms" -BackgroundColor Red 
-    echo ""
-    echo "Example:"
-    echo ""
-    echo ".\bios_check -l <list path here> -d <desired version here>"
-    echo ""
-    echo "OR"
-    echo ""
-    echo ".\bioscheck.ps1 -r -d <desired version>" 
-    }
- 
-
- }
-
-
-
-
-
-
+remote-install $alive_pcs # calls remote-install function on the alive_pcs array. Uses invoke-command to run the remote installs in parallel with eachother
 
