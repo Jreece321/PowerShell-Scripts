@@ -34,88 +34,103 @@ param (
  [Parameter(Mandatory=$false)][switch]$room_method
  )
 
-function Start-Menu {
+ function Start-Menu {
 
-    $apps = Get-ChildItem -Path C:\Users\jeree\script_test | Select-Object -exp Name  
+    $apps = Get-ChildItem -Path C:\Users\jeree\script_test | Select-Object -exp Name 
+    $app_length = $apps.Length -1 
+    
+    While ($true){
+
     $apps_hashtable = @{}
-     
-    for ($x = 0; $x -lt $apps.Length; $x++){ # loop to iterate through directories and assign them to a hashtable for use in interactive menu
+
+    for ($x = 0; $x -lt $apps.Length; $x++){
    
        $apps_hashtable.Add("$x", $apps[$x])
    
     }
+    Write-Host ""
+    Write-Host "################ Application Select #################"
+    Write-Host ""
+    Write-Host "Options:"
+    Write-Host ""
+    Write-host "[s] Search for specific application"
+    Write-Host "[v] View all applications"
+    Write-Host "[q] Quit this Script"
+    Write-Host "[0 - $app_length] Choose the number corresponding to your desired application" 
+    Write-Host ""
+     
+    $option = read-host 
+    
+        if ($option -like "v"){
 
-    While ($true){
+            $apps_hashtable.GetEnumerator() | Sort-Object  Value |  Format-Table
 
-    $apps_hashtable.GetEnumerator() | Sort-Object  Value |  Format-Table # calling on the getenumerator function to show all application directories to the screen
-    Write-host "[s] Search for Application"
-    Write-host "[0 - $app_length] Install Corresponding Applicaiton" 
-    Write-host "[q] Exit this Script"
-    $search = read-host 
-
-    if ($search -like "s"){ # If input is "s", initiates code block to handle searches
-
-        $search = read-host "Please enter the name of the application you'd like to search"
-        $global:result = $apps_hashtable.GetEnumerator() | Where-Object Value -like *$search* | Sort-Object Name | Format-Table  
-        
-        if ( $null -eq $global:result ){ # Restarts to main menu if no partial matches 
-            Write-host "There were no partial matches with your search, Please try again"
-            Write-host ""
-            Write-Host "Returning to Beginning of Menu..."
-            Start-Sleep -Seconds 3 
-            continue 
         }
 
-        Write-host "Below are the applications that are similar to your search."
-        Write-host ""
-        $global:result  
+        elseif ($option -like "s"){
 
-        $choice = read-host "Select a number to install or press q to restart"
+            $search = read-host "Please enter the name of the application you'd like to search"
+            $global:result = $apps_hashtable.GetEnumerator() | Where-Object Value -like *$search* | Sort-Object Name | Format-Table  
+
+            if ($null -eq $global:result){
+
+                Write-Host "Error! No applications found with that search. Restarting Menu...."
+                Start-Sleep -Seconds 3
+                continue 
+
+            }
             
-            if ($choice -le $apps.length){
-                $global:result = $apps_hashtable.GetEnumerator() | Where-Object Name -eq $choice | Sort-Object Value | select -exp Value
-                Write-host "Are you sure you'd like to install $global:result ?"
-                $confirm =  Read-Host "Press y/n"
-                        if ($confirm -like "y"){
-                            break
-                        }
-                        else {
-                            Write-host "Returning to beginning of menu..."
-                            Start-sleep -Seconds 3 
-                        }
-            }
-            elseif ($choice -like "q"){
-                "Restarting this Menu"
-                Start-Sleep -Seconds 3
-            }   
-    }
+            Write-host "Below are the applications that are similar to your search."
+            $global:result  
 
-    elseif ($search -le $apps.Length){
+            $choice = read-host "Select a number to install or press q to restart"
+                
+                if ($choice -le $apps.length){
+                    $global:result = $apps_hashtable.GetEnumerator() | Where-Object Name -eq $choice | Sort-Object Value | select -exp Value
+                    Write-host "Are you sure you'd like to install $global:result ?"
+                    $confirm =  Read-Host "Press y/n"
+                            if ($confirm -like "y"){
+                                break
+                            }
+                            else {
+                                Write-host "Returning to beginning of menu..."
+                                Start-sleep -Seconds 3 
+                                
+                            }
+                }
+                elseif ($choice -like "q"){
+                    "Restarting this Menu"
+                    Start-Sleep -Seconds 3
+                }   
+        }
 
-        $global:result = $apps_hashtable.GetEnumerator() | Where-Object Name -eq $search | select -exp Value 
-        Write-host "Are you sure you would like to install $global:result ?"  
-        $confirm = read-host "press y/n"
-            if ($confirm -eq "y"){
-                break 
-            }
-            else {
-                "Returning to beginning of menu..."
-                Start-Sleep -Seconds 3
-            }
+        elseif ($option -eq "q"){
+            Write-Host "Exiting this Script"
+            exit 1 
+        }
+
+        elseif ($option -le $apps.Length){
+
+            $global:result = $apps_hashtable.GetEnumerator() | Where-Object Name -eq $option | select -exp Value 
+            Write-host "Are you sure you would like to install $global:result ?"  
+            $confirm = read-host "press y/n"
+                if ($confirm -eq "y"){
+                    break 
+                }
+                else {
+                    "Returning to beginning of menu..."
+                    Start-Sleep -Seconds 3
+                }
+            
+        }
+        elseif ($choice -gt $apps.Length){
+
+            Write-Host "the value you input is too high, please try again"
+            Write-Host "Returning to beginning of menu..."
+            Start-sleep -seconds 3 
+        }
         
-    }
-
-    elseif ($search -eq "q"){
-        Write-Host "Exiting this Script"
-        exit 1 
-    }
-
-    elseif (($search -gt $apps.Length) -or ($search -lt 0)){
-
-        Write-Host"the value you input is invalid, please try again"
-        Start-sleep -seconds 3 
-    }
-    }
+        }
 
 }
 
@@ -125,7 +140,7 @@ function remote-install {
     
         Invoke-Expression $using:net_command 
     
-        cd "Z:\Applications\$using:result" # Change directory into designated applicaiton folder 
+        Set-Location "Z:\Applications\$using:result" # Change directory into designated applicaiton folder 
     
         $cmd_file = Get-ChildItem -path "Z:\Applications\$using:result" | Where-Object Name -like "*.cmd" | select -exp Name # Extracts the .cmd file from app directory
         
@@ -190,6 +205,7 @@ $pcs = @()
 $alive_pcs = @()
 $mdt_server = "\\s-mdt-w10\distribution$"
 $drive_letter = "Z:"
+$applications_dir = "Applications"
 
 if (($list -eq "") -and ($room_method -eq $false) -or ($list -ne "") -and ($room_method = $true)){ # logic to catch inputs for both or neither of the two parameters for PC lists
 
@@ -206,10 +222,9 @@ $password = read-host "Please enter your password"
 #Assigning net use command to a string variable; workaround since net use won't take variables nicely
 $net_command = "net use $drive_letter $mdt_server /user:dtcc\$username $password" 
 
- 
-
-$mdt_test = Test-Path -Path Z:\Applications 
-
+$mdt_test = Test-Path -Path $drive_letter\$applications_dir 
+  
+################## Execution Block #####################
 
 if ($mdt_test -eq $false){ # If Z:\applications isn't mounted, mount it by invoking net_command expression
     
@@ -231,4 +246,3 @@ $pc_list = get-content $list # if list was provided, assigns $pc_list to the con
 pc-health $pc_list # Calls pc health function to test connection on the pc_list; the ones that are able to be pinged get assigned to the alive_pcs array
 
 remote-install $alive_pcs # calls remote-install function on the alive_pcs array. Uses invoke-command to run the remote installs in parallel with eachother
-
