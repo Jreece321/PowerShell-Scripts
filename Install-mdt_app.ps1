@@ -36,7 +36,7 @@ param (
 
  function Start-Menu {
 
-    $apps = Get-ChildItem -Path C:\Users\jeree\script_test | Select-Object -exp Name 
+    $apps = Get-ChildItem -Path Z:\Applications -Directory | Select-Object -exp Name 
     $app_length = $apps.Length -1 
     
     While ($true){
@@ -44,9 +44,15 @@ param (
     $apps_hashtable = @{}
 
     for ($x = 0; $x -lt $apps.Length; $x++){
+        
+        if($x -lt 10){
+        $apps_hashtable.Add("0
+        $x", $apps[$x])
+        }
    
+        else {
        $apps_hashtable.Add("$x", $apps[$x])
-   
+        }
     }
     Write-Host ""
     Write-Host "################ Application Select #################"
@@ -136,6 +142,11 @@ param (
 
 function remote-install {
 
+   echo ""
+   Write-Host "Starting remote installation for $Global:result"
+   echo ""
+   Start-Sleep -Seconds 2
+
     Invoke-Command -ComputerName $args[0] { # Invokes commands on remote computer given a list of PCs designated by the -ComputerName parameter
     
         Invoke-Expression $using:net_command 
@@ -152,18 +163,26 @@ function remote-install {
 
 function pc-health { # If PC is able to be pinged, add it to alive_pcs array. If not, display error message to screen
 
-    $check = $args[0]
-    If ( Test-Connection -BufferSize 32 -Count 1 -ComputerName $check -Quiet )  
+     foreach ($pc in $args[0]){
+
+    If ( Test-Connection -BufferSize 32 -Count 1 -ComputerName $pc -Quiet )  
     { 
-        $alive_pcs += $check 
+        Write-host "$pc is available" -ForegroundColor Green 
+        $global:alive_pcs += $pc 
     }
+
     else
-    { Write-Host " $check is not available " -ForegroundColor Red
+    { Write-Host " $pc is not available " -ForegroundColor Red
+    Write-host $pc | Out-File -FilePath .\noping_list.txt 
          continue }
          
-    }
+    }}
 function get-pclist { # Function to take room number input and output list of PCs
-
+            $global:pc_list = @()
+            $roomarray = @()
+        Write-host ""
+        Write-host "############### Computer Rooms Selection ###################"
+        Write-Host ""
     do { # Loop to keep prompting users for rooms until they press "q" 
         $room = Read-Host "Please enter your room number(s). (i.e openlab or a227). Press q and enter when finished" 
             
@@ -176,7 +195,8 @@ function get-pclist { # Function to take room number input and output list of PC
             
               
     foreach ($room in $roomarray){ # Iterates through room array to change dns formatting and conduct AD search 
-            
+         
+         
             
         $length =$room.Length # assigns the length of the room string to a variable
         $room = $room.Insert($length,"-*") # adds a wildcard asterisk at the end of the string to search for all PCs beginning with that DNS
@@ -186,32 +206,45 @@ function get-pclist { # Function to take room number input and output list of PC
                 
         $getad = (([adsisearcher]"(&(objectCategory=Computer)(name=$room))").findall()).properties # Conducts an AD search based on Computer objects whose name is like room dns
                     
-        $pc_list += $getad.cn # Adds all PCs dns names (that start with the room number) to pc_list array 
-            
+        $global:pc_list += $getad.cn # Adds all PCs dns names (that start with the room number) to pc_list array 
+         
+         #write-host $roomarray 
+         # Write-host $global:pc_list
         #Example:
         # $room = s-openlab-*. Output would be s-openlab-01, s-openlab-02.... s-openlab-14, etc. 
         }
+     #   echo $global:pc_list 
     
     }
 
-Start-Menu 
+
 
 ############## Assigning Variables and arrays necessary for function use ######################
 
 
-$roomarray = @()
 $pc_list = @()
-$pcs = @()
 $alive_pcs = @()
 $mdt_server = "\\s-mdt-w10\distribution$"
 $drive_letter = "Z:"
 $applications_dir = "Applications"
 
-if (($list -eq "") -and ($room_method -eq $false) -or ($list -ne "") -and ($room_method = $true)){ # logic to catch inputs for both or neither of the two parameters for PC lists
+if (($list -eq "") -and ($room_method -eq $false)){ # logic to catch inputs for both or neither of the two parameters for PC lists
 
-    Write-Host "Error! You must choose (only) 1 method of importing PC Names" -BackgroundColor Red 
+    Write-Host ""
+    Write-Host "You must choose a method to designate PCs to install applications to"
+    write-host ""
 
-    exit 1 
+    $method = Read-host "Press [r] to do whole rooms at a time or [L] to declare a list of PCs"
+
+    if ($method -like "r"){
+    $room_method = $true 
+    }
+    elseif ($method -like "L"){
+    write-host ""
+    $list = Read-host "Please type the full (or relative) path to your file containing PC names" 
+    write-host ""
+    }
+    
 
 }
 
@@ -236,13 +269,16 @@ Start-Menu # Calls start menu function to retrieve desired application from user
 
 if ($room_method){
 
-    get-pclist # calls function to get pc list by room number; assigns pcs to pc_list array
+    get-pclist # calls function to get pc list by room number; assigns pcs to global:pc_list array
 }
 elseif ($list){
 
-$pc_list = get-content $list # if list was provided, assigns $pc_list to the content of the list provided in the -l parameter
+$global:pc_list = get-content $list # if list was provided, assigns $pc_list to the content of the list provided in the -l parameter
 }
 
-pc-health $pc_list # Calls pc health function to test connection on the pc_list; the ones that are able to be pinged get assigned to the alive_pcs array
+# Calls pc health function to test connection on the pc_list; the ones that are able to be pinged get assigned to the alive_pcs array
+pc-health $global:pc_list
 
-remote-install $alive_pcs # calls remote-install function on the alive_pcs array. Uses invoke-command to run the remote installs in parallel with eachother
+
+remote-install $global:alive_pcs # calls remote-install function on the alive_pcs array. Uses invoke-command to run the remote installs in parallel with eachother
+
